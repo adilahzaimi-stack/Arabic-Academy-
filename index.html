@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARABIC ACADEMY - Akademi Bahasa Arab Interaktif</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="script"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="script"></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              teal: '#00C9A7',
+              yellow: '#FFC72C',
+              coral: '#FF6B6B',
+              purple: '#8A2BE2',
+              blue: '#4D96FF'
+            }
+          },
+          fontFamily: {
+            sans: ['Fredoka', 'sans-serif'],
+            arabic: ['Amiri', 'serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #F4F7FE;
+      user-select: none;
+    }
+    .arabic-text {
+      font-family: 'Amiri', serif;
+      direction: rtl;
+    }
+    .shake {
+      animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+    }
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+      40%, 60% { transform: translate3d(4px, 0, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // SENARAI KARTUN IDENTITI DIRI
+    const CARTOON_AVATARS = [
+      { id: 'cat', icon: 'fa-cat', name: 'Kucing Comel', bg: 'bg-amber-400' },
+      { id: 'dog', icon: 'fa-dog', name: 'Anjing Setia', bg: 'bg-orange-400' },
+      { id: 'dragon', icon: 'fa-dragon', name: 'Naga Berani', bg: 'bg-emerald-500' },
+      { id: 'frog', icon: 'fa-frog', name: 'Katak Ceria', bg: 'bg-green-500' },
+      { id: 'hippo', icon: 'fa-hippo', name: 'Badak Ramah', bg: 'bg-blue-400' },
+      { id: 'fish', icon: 'fa-fish-fins', name: 'Ikan Ajaib', bg: 'bg-cyan-400' },
+      { id: 'otter', icon: 'fa-otter', name: 'Memerang Pandai', bg: 'bg-purple-400' },
+      { id: 'crow', icon: 'fa-crow', name: 'Burung Bijak', bg: 'bg-rose-400' }
+    ];
+
+    // --- ENJIN AUDIO CERIA & SPEECH SYNTHESIS ---
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.masterGain = null;
+        this.bgmTimer = null;
+        this.isBgmPlaying = false;
+        this.noteIndex = 0;
+        this.volume = 0.4;
+      }
+
+      initContext() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.ctx = new AudioContext();
+            this.masterGain = this.ctx.createGain();
+            this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+            this.masterGain.connect(this.ctx.destination);
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      setVolume(val) {
+        this.volume = val / 100;
+        if (this.masterGain && this.ctx) {
+          this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+        }
+      }
+
+      startBgm() {
+        this.initContext();
+        if (!this.ctx || this.isBgmPlaying) return;
+        this.isBgmPlaying = true;
+
+        const melody = [
+          { f: 523.25, d: 220 }, { f: 659.25, d: 220 }, { f: 783.99, d: 220 },
+          { f: 880.00, d: 220 }, { f: 783.99, d: 220 }, { f: 659.25, d: 220 },
+          { f: 523.25, d: 350 }, { f: 587.33, d: 220 }, { f: 659.25, d: 220 },
+          { f: 698.46, d: 220 }, { f: 659.25, d: 220 }, { f: 587.33, d: 350 },
+          { f: 659.25, d: 220 }, { f: 783.99, d: 220 }, { f: 880.00, d: 350 }
+        ];
+
+        const playNextStep = () => {
+          if (!this.isBgmPlaying || !this.ctx) return;
+          const note = melody[this.noteIndex % melody.length];
+          this.noteIndex++;
+
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(note.f, this.ctx.currentTime);
+          gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + (note.d / 1000));
+
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start();
+          osc.stop(this.ctx.currentTime + (note.d / 1000) + 0.05);
+
+          this.bgmTimer = setTimeout(playNextStep, note.d + 30);
+        };
+
+        playNextStep();
+      }
+
+      stopBgm() {
+        this.isBgmPlaying = false;
+        if (this.bgmTimer) clearTimeout(this.bgmTimer);
+      }
+
+      playCorrectSFX() {
+        this.initContext();
+        if (!this.ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
+          gain.gain.setValueAtTime(0, this.ctx.currentTime + idx * 0.1);
+          gain.gain.linearRampToValueAtTime(0.2, this.ctx.currentTime + idx * 0.1 + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + idx * 0.1 + 0.35);
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start(this.ctx.currentTime + idx * 0.1);
+          osc.stop(this.ctx.currentTime + idx * 0.1 + 0.4);
+        });
+      }
+
+      playWrongSFX() {
+        this.initContext();
+        if (!this.ctx) return;
+        const notes = [392.00, 329.63];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.15);
+          gain.gain.setValueAtTime(0.15, this.ctx.currentTime + idx * 0.15);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + idx * 0.15 + 0.25);
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start(this.ctx.currentTime + idx * 0.15);
+          osc.stop(this.ctx.currentTime + idx * 0.15 + 0.3);
+        });
+      }
+
+      speakQuestion(text) {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'ar-SA';
+          utterance.rate = 0.8;
+          window.speechSynthesis.speak(utterance);
+        }
+      }
+    }
+
+    const soundFX = new SoundEngine();
+
+    // --- LOGO BRANDING COMPONENT ---
+    function LogoApp() {
+      return (
+        <div className="flex items-center gap-3">
+          <div className="bg-gradient-to-tr from-brand-teal via-teal-400 to-blue-500 text-white w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-2xl shadow-md border-2 border-white transform hover:rotate-6 transition">
+            <i className="fa-solid fa-moon text-amber-300"></i>
+          </div>
+          <div>
+            <h1 className="text-xl font-extrabold text-gray-800 tracking-wide font-sans flex items-center gap-2">
+              <span>ARABIC ACADEMY</span>
+              <span className="arabic-text text-brand-teal text-lg font-bold">(المَعْهَدُ العَرَبِيُّ)</span>
+            </h1>
+            <p className="text-[11px] text-gray-500 font-medium">Akademi Bahasa Arab Interaktif KSSR</p>
+          </div>
+        </div>
+      );
+    }
+
+    // --- PANGKALAN DATA KAMUS BAHASA ARAB SILIBUS KSSR TAHUN 1-6 ---
+    const globalDictionary = [
+      // KATA-KATA PENGENALAN
+      { ar: 'أَهْلاً وَسَهْلاً', my: 'Selamat Datang', category: 'pengenalan' },
+      { ar: 'أَهْلاً بِكَ', my: 'Selamat Datang Juga (Lelaki)', category: 'pengenalan' },
+      { ar: 'أَهْلاً بِكِ', my: 'Selamat Datang Juga (Perempuan)', category: 'pengenalan' },
+      { ar: 'صَبَاحَ الْخَيْرِ', my: 'Selamat Pagi', category: 'pengenalan' },
+      { ar: 'صَبَاحَ النُّورِ', my: 'Selamat Pagi (Jawapan)', category: 'pengenalan' },
+      { ar: 'مَسَاءَ الْخَيْرِ', my: 'Selamat Petang', category: 'pengenalan' },
+      { ar: 'مَسَاءَ النُّورِ', my: 'Selamat Petang (Jawapan)', category: 'pengenalan' },
+      { ar: 'مَا اسْمُكَ؟', my: 'Siapa Namamu? (Lelaki)', category: 'pengenalan' },
+      { ar: 'مَا اسْمُكِ؟', my: 'Siapa Namamu? (Perempuan)', category: 'pengenalan' },
+      { ar: 'كَيْفَ حَالُكَ؟', my: 'Apa Khabar? (Lelaki)', category: 'pengenalan' },
+      { ar: 'أَنَا بِخَيْرٍ', my: 'Saya Sihat', category: 'pengenalan' },
+      { ar: 'شُكْرًا', my: 'Terima Kasih', category: 'pengenalan' },
+      { ar: 'عَفْوًا', my: 'Sama-sama', category: 'pengenalan' },
+      { ar: 'إِلَى اللِّقَاءِ', my: 'Jumpa Lagi', category: 'pengenalan' },
+      { ar: 'مَعَ السَّلاَمَةِ', my: 'Selamat Tinggal', category: 'pengenalan' },
+
+      // NOMBOR 1 HINGGA 100 LENGKAP (KSSR)
+      { ar: 'وَاحِدٌ (١)', my: 'Satu (1)', category: 'nombor' },
+      { ar: 'اثْنَانِ (٢)', my: 'Dua (2)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ (٣)', my: 'Tiga (3)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ (٤)', my: 'Empat (4)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ (٥)', my: 'Lima (5)', category: 'nombor' },
+      { ar: 'سِتَّةٌ (٦)', my: 'Enam (6)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ (٧)', my: 'Tujuh (7)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ (٨)', my: 'Lapan (8)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ (٩)', my: 'Sembilan (9)', category: 'nombor' },
+      { ar: 'عَشَرَةٌ (١٠)', my: 'Sepuluh (10)', category: 'nombor' },
+      { ar: 'أَحَدَ عَشَرَ (١١)', my: 'Sebelas (11)', category: 'nombor' },
+      { ar: 'اثْنَا عَشَرَ (١٢)', my: 'Dua Belas (12)', category: 'nombor' },
+      { ar: 'ثَلاَثَةَ عَشَرَ (١٣)', my: 'Tiga Belas (13)', category: 'nombor' },
+      { ar: 'أَرْبَعَةَ عَشَرَ (١٤)', my: 'Empat Belas (14)', category: 'nombor' },
+      { ar: 'خَمْسَةَ عَشَرَ (١٥)', my: 'Lima Belas (15)', category: 'nombor' },
+      { ar: 'سِتَّةَ عَشَرَ (١٦)', my: 'Enam Belas (16)', category: 'nombor' },
+      { ar: 'سَبْعَةَ عَشَرَ (١٧)', my: 'Tujuh Belas (17)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةَ عَشَرَ (١٨)', my: 'Lapan Belas (18)', category: 'nombor' },
+      { ar: 'تِسْعَةَ عَشَرَ (١٩)', my: 'Sembilan Belas (19)', category: 'nombor' },
+
+      // NOMBOR 20 - 29
+      { ar: 'عِشْرُونَ (٢٠)', my: 'Dua Puluh (20)', category: 'nombor' },
+      { ar: 'وَاحِدٌ وَعِشْرُونَ (٢١)', my: 'Dua Puluh Satu (21)', category: 'nombor' },
+      { ar: 'اثْنَانِ وَعِشْرُونَ (٢٢)', my: 'Dua Puluh Dua (22)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ وَعِشْرُونَ (٢٣)', my: 'Dua Puluh Tiga (23)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ وَعِشْرُونَ (٢٤)', my: 'Dua Puluh Empat (24)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ وَعِشْرُونَ (٢٥)', my: 'Dua Puluh Lima (25)', category: 'nombor' },
+      { ar: 'سِتَّةٌ وَعِشْرُونَ (٢٦)', my: 'Dua Puluh Enam (26)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ وَعِشْرُونَ (٢٧)', my: 'Dua Puluh Tujuh (27)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ وَعِشْرُونَ (٢٨)', my: 'Dua Puluh Lapan (28)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ وَعِشْرُونَ (٢٩)', my: 'Dua Puluh Sembilan (29)', category: 'nombor' },
+
+      // NOMBOR 30 - 39
+      { ar: 'ثَلاَثُونَ (٣٠)', my: 'Tiga Puluh (30)', category: 'nombor' },
+      { ar: 'وَاحِدٌ وَثَلاَثُونَ (٣١)', my: 'Tiga Puluh Satu (31)', category: 'nombor' },
+      { ar: 'اثْنَانِ وَثَلاَثُونَ (٣٢)', my: 'Tiga Puluh Dua (32)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ وَثَلاَثُونَ (٣٣)', my: 'Tiga Puluh Tiga (33)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ وَثَلاَثُونَ (٣٤)', my: 'Tiga Puluh Empat (34)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ وَثَلاَثُونَ (٣٥)', my: 'Tiga Puluh Lima (35)', category: 'nombor' },
+      { ar: 'سِتَّةٌ وَثَلاَثُونَ (٣٦)', my: 'Tiga Puluh Enam (36)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ وَثَلاَثُونَ (٣٧)', my: 'Tiga Puluh Tujuh (37)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ وَثَلاَثُونَ (٣٨)', my: 'Tiga Puluh Lapan (38)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ وَثَلاَثُونَ (٣٩)', my: 'Tiga Puluh Sembilan (39)', category: 'nombor' },
+
+      // NOMBOR 40 - 49
+      { ar: 'أَرْبَعُونَ (٤٠)', my: 'Empat Puluh (40)', category: 'nombor' },
+      { ar: 'وَاحِدٌ وَأَرْبَعُونَ (٤١)', my: 'Empat Puluh Satu (41)', category: 'nombor' },
+      { ar: 'اثْنَانِ وَأَرْبَعُونَ (٤٢)', my: 'Empat Puluh Dua (42)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ وَأَرْبَعُونَ (٤٣)', my: 'Empat Puluh Tiga (43)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ وَأَرْبَعُونَ (٤٤)', my: 'Empat Puluh Empat (44)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ وَأَرْبَعُونَ (٤٥)', my: 'Empat Puluh Lima (45)', category: 'nombor' },
+      { ar: 'سِتَّةٌ وَأَرْبَعُونَ (٤٦)', my: 'Empat Puluh Enam (46)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ وَأَرْبَعُونَ (٤٧)', my: 'Empat Puluh Tujuh (47)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ وَأَرْبَعُونَ (٤٨)', my: 'Empat Puluh Lapan (48)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ وَأَرْبَعُونَ (٤٩)', my: 'Empat Puluh Sembilan (49)', category: 'nombor' },
+
+      // NOMBOR 50 - 59
+      { ar: 'خَمْسُونَ (٥٠)', my: 'Lima Puluh (50)', category: 'nombor' },
+      { ar: 'وَاحِدٌ وَخَمْسُونَ (٥١)', my: 'Lima Puluh Satu (51)', category: 'nombor' },
+      { ar: 'اثْنَانِ وَخَمْسُونَ (٥٢)', my: 'Lima Puluh Dua (52)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ وَخَمْسُونَ (٥٣)', my: 'Lima Puluh Tiga (53)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ وَخَمْسُونَ (٥٤)', my: 'Lima Puluh Empat (54)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ وَخَمْسُونَ (٥٥)', my: 'Lima Puluh Lima (55)', category: 'nombor' },
+      { ar: 'سِتَّةٌ وَخَمْسُونَ (٥٦)', my: 'Lima Puluh Enam (56)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ وَخَمْسُونَ (٥٧)', my: 'Lima Puluh Tujuh (57)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ وَخَمْسُونَ (٥٨)', my: 'Lima Puluh Lapan (58)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ وَخَمْسُونَ (٥٩)', my: 'Lima Puluh Sembilan (59)', category: 'nombor' },
+
+      // NOMBOR 60 - 69
+      { ar: 'سِتُّونَ (٦٠)', my: 'Enam Puluh (60)', category: 'nombor' },
+      { ar: 'وَاحِدٌ وَسِتُّونَ (٦١)', my: 'Enam Puluh Satu (61)', category: 'nombor' },
+      { ar: 'اثْنَانِ وَسِتُّونَ (٦٢)', my: 'Enam Puluh Dua (62)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ وَسِتُّونَ (٦٣)', my: 'Enam Puluh Tiga (63)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ وَسِتُّونَ (٦٤)', my: 'Enam Puluh Empat (64)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ وَسِتُّونَ (٦٥)', my: 'Enam Puluh Lima (65)', category: 'nombor' },
+      { ar: 'سِتَّةٌ وَسِتُّونَ (٦٦)', my: 'Enam Puluh Enam (66)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ وَسِتُّونَ (٦٧)', my: 'Enam Puluh Tujuh (67)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ وَسِتُّونَ (٦٨)', my: 'Enam Puluh Lapan (68)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ وَسِتُّونَ (٦٩)', my: 'Enam Puluh Sembilan (69)', category: 'nombor' },
+
+      // NOMBOR 70 - 79
+      { ar: 'سَبْعُونَ (٧٠)', my: 'Tujuh Puluh (70)', category: 'nombor' },
+      { ar: 'وَاحِدٌ وَسَبْعُونَ (٧١)', my: 'Tujuh Puluh Satu (71)', category: 'nombor' },
+      { ar: 'اثْنَانِ وَسَبْعُونَ (٧٢)', my: 'Tujuh Puluh Dua (72)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ وَسَبْعُونَ (٧٣)', my: 'Tujuh Puluh Tiga (73)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ وَسَبْعُونَ (٧٤)', my: 'Tujuh Puluh Empat (74)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ وَسَبْعُونَ (٧٥)', my: 'Tujuh Puluh Lima (75)', category: 'nombor' },
+      { ar: 'سِتَّةٌ وَسَبْعُونَ (٧٦)', my: 'Tujuh Puluh Enam (76)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ وَسَبْعُونَ (٧٧)', my: 'Tujuh Puluh Tujuh (77)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ وَسَبْعُونَ (٧٨)', my: 'Tujuh Puluh Lapan (78)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ وَسَبْعُونَ (٧٩)', my: 'Tujuh Puluh Sembilan (79)', category: 'nombor' },
+
+      // NOMBOR 80 - 89
+      { ar: 'ثَمَانُونَ (٨٠)', my: 'Lapan Puluh (80)', category: 'nombor' },
+      { ar: 'وَاحِدٌ وَثَمَانُونَ (٨١)', my: 'Lapan Puluh Satu (81)', category: 'nombor' },
+      { ar: 'اثْنَانِ وَثَمَانُونَ (٨٢)', my: 'Lapan Puluh Dua (82)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ وَثَمَانُونَ (٨٣)', my: 'Lapan Puluh Tiga (83)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ وَثَمَانُونَ (٨٤)', my: 'Lapan Puluh Empat (84)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ وَثَمَانُونَ (٨٥)', my: 'Lapan Puluh Lima (85)', category: 'nombor' },
+      { ar: 'سِتَّةٌ وَثَمَانُونَ (٨٦)', my: 'Lapan Puluh Enam (86)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ وَثَمَانُونَ (٨٧)', my: 'Lapan Puluh Tujuh (87)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ وَثَمَانُونَ (٨٨)', my: 'Lapan Puluh Lapan (88)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ وَثَمَانُونَ (٨٩)', my: 'Lapan Puluh Sembilan (89)', category: 'nombor' },
+
+      // NOMBOR 90 - 100
+      { ar: 'تِسْعُونَ (٩٠)', my: 'Sembilan Puluh (90)', category: 'nombor' },
+      { ar: 'وَاحِدٌ وَتِسْعُونَ (٩١)', my: 'Sembilan Puluh Satu (91)', category: 'nombor' },
+      { ar: 'اثْنَانِ وَتِسْعُونَ (٩٢)', my: 'Sembilan Puluh Dua (92)', category: 'nombor' },
+      { ar: 'ثَلاَثَةٌ وَتِسْعُونَ (٩٣)', my: 'Sembilan Puluh Tiga (93)', category: 'nombor' },
+      { ar: 'أَرْبَعَةٌ وَتِسْعُونَ (٩٤)', my: 'Sembilan Puluh Empat (94)', category: 'nombor' },
+      { ar: 'خَمْسَةٌ وَتِسْعُونَ (٩٥)', my: 'Sembilan Puluh Lima (95)', category: 'nombor' },
+      { ar: 'سِتَّةٌ وَتِسْعُونَ (٩٦)', my: 'Sembilan Puluh Enam (96)', category: 'nombor' },
+      { ar: 'سَبْعَةٌ وَتِسْعُونَ (٩٧)', my: 'Sembilan Puluh Tujuh (97)', category: 'nombor' },
+      { ar: 'ثَمَانِيَةٌ وَتِسْعُونَ (٩٨)', my: 'Sembilan Puluh Lapan (98)', category: 'nombor' },
+      { ar: 'تِسْعَةٌ وَتِسْعُونَ (٩٩)', my: 'Sembilan Puluh Sembilan (99)', category: 'nombor' },
+      { ar: 'مِائَةٌ (١٠٠)', my: 'Seratus (100)', category: 'nombor' },
+
+      // BULAN HIJRI (1 HINGGA 12 LENGKAP)
+      { ar: 'مُحَرَّمٌ', my: '1. Muharram', category: 'bulan' },
+      { ar: 'صَفَرٌ', my: '2. Safar', category: 'bulan' },
+      { ar: 'رَبِيعُ الأَوَّلِ', my: '3. Rabiulawal', category: 'bulan' },
+      { ar: 'رَبِيعُ الآخِرِ', my: '4. Rabiulakhir', category: 'bulan' },
+      { ar: 'جُمَادَى الأُولَى', my: '5. Jamadilawal', category: 'bulan' },
+      { ar: 'جُمَادَى الآخِرَةِ', my: '6. Jamadilakhir', category: 'bulan' },
+      { ar: 'رَجَبٌ', my: '7. Rejab', category: 'bulan' },
+      { ar: 'شَعْبَانُ', my: '8. Syaaban', category: 'bulan' },
+      { ar: 'رَمَضَانُ', my: '9. Ramadan', category: 'bulan' },
+      { ar: 'شَوَّالٌ', my: '10. Syawal', category: 'bulan' },
+      { ar: 'ذُو القَعْدَةِ', my: '11. Zulkaedah', category: 'bulan' },
+      { ar: 'ذُو الحِجَّةِ', my: '12. Zulhijjah', category: 'bulan' },
+
+      // BULAN MILADI (1 HINGGA 12 LENGKAP)
+      { ar: 'يَنَايِرُ', my: 'Januari', category: 'bulan' },
+      { ar: 'فِبْرَايِرُ', my: 'Februari', category: 'bulan' },
+      { ar: 'مَارِسُ', my: 'Mac', category: 'bulan' },
+      { ar: 'أَبْرِيلُ', my: 'April', category: 'bulan' },
+      { ar: 'مَايُو', my: 'Mei', category: 'bulan' },
+      { ar: 'يُونِيُو', my: 'Jun', category: 'bulan' },
+      { ar: 'يُولِيُو', my: 'Julai', category: 'bulan' },
+      { ar: 'أَغُسْطُسُ', my: 'Ogos', category: 'bulan' },
+      { ar: 'سِبْتَمْبَرُ', my: 'September', category: 'bulan' },
+      { ar: 'أُكْتُوبَرُ', my: 'Oktober', category: 'bulan' },
+      { ar: 'نُوفَمْبَرُ', my: 'November', category: 'bulan' },
+      { ar: 'دِيسَمْبَرُ', my: 'Disember', category: 'bulan' },
+
+      // KOMPONEN 1: ALATAN DALAM KELAS
+      { ar: 'مَكْتَبٌ', my: 'Meja', category: 'alatan_kelas' },
+      { ar: 'كُرْسِيٌّ', my: 'Kerusi', category: 'alatan_kelas' },
+      { ar: 'سَبُّورَةٌ', my: 'Papan Hitam / Papan Tulis', category: 'alatan_kelas' },
+      { ar: 'بَابٌ', my: 'Pintu', category: 'alatan_kelas' },
+      { ar: 'نَافِذَةٌ', my: 'Tingkap', category: 'alatan_kelas' },
+      { ar: 'دَوْلاَبٌ', my: 'Almari', category: 'alatan_kelas' },
+      { ar: 'سَلَّةٌ', my: 'Bakul', category: 'alatan_kelas' },
+      { ar: 'مِكْنَسَةٌ', my: 'Penyapu', category: 'alatan_kelas' },
+      { ar: 'مَكْتَبَةٌ', my: 'Meja Guru / Rak Buku', category: 'alatan_kelas' },
+      { ar: 'طَبَاشِيرُ', my: 'Kapur', category: 'alatan_kelas' },
+      { ar: 'خَرِيطَةٌ', my: 'Peta', category: 'alatan_kelas' },
+
+      // KOMPONEN 2: WARNA
+      { ar: 'أَحْمَرُ', my: 'Merah (Lelaki)', category: 'warna' },
+      { ar: 'حَمْرَاءُ', my: 'Merah (Perempuan)', category: 'warna' },
+      { ar: 'أَزْرَقُ', my: 'Biru (Lelaki)', category: 'warna' },
+      { ar: 'زَرْقَاءُ', my: 'Biru (Perempuan)', category: 'warna' },
+      { ar: 'أَخْضَرُ', my: 'Hijau (Lelaki)', category: 'warna' },
+      { ar: 'خَضْرَاءُ', my: 'Hijau (Perempuan)', category: 'warna' },
+      { ar: 'أَصْفَرُ', my: 'Kuning (Lelaki)', category: 'warna' },
+      { ar: 'صَفْرَاءُ', my: 'Kuning (Perempuan)', category: 'warna' },
+      { ar: 'أَسْوَدُ', my: 'Hitam (Lelaki)', category: 'warna' },
+      { ar: 'سَوْدَاءُ', my: 'Hitam (Perempuan)', category: 'warna' },
+      { ar: 'أَبْيَضُ', my: 'Putih (Lelaki)', category: 'warna' },
+      { ar: 'بَيْضَاءُ', my: 'Putih (Perempuan)', category: 'warna' },
+      { ar: 'بُنِّيٌّ', my: 'Coklat', category: 'warna' },
+      { ar: 'بَنَفْسَجِيٌّ', my: 'Ungu', category: 'warna' },
+      { ar: 'بُرْتُقَالِيٌّ', my: 'Oren / Jingga', category: 'warna' },
+      { ar: 'وَرْدِيٌّ', my: 'Merah Jambu', category: 'warna' },
+
+      // KOMPONEN 3: ALATAN DALAM RUMAH
+      { ar: 'تِلْفَازٌ', my: 'Televisyen', category: 'alatan_rumah' },
+      { ar: 'هَاتِفٌ', my: 'Telefon', category: 'alatan_rumah' },
+      { ar: 'سَاعَةٌ', my: 'Jam', category: 'alatan_rumah' },
+      { ar: 'أَرِيكَةٌ', my: 'Sofa', category: 'alatan_rumah' },
+      { ar: 'سَرِيرٌ', my: 'Katil', category: 'alatan_rumah' },
+      { ar: 'وسَادَةٌ', my: 'Bantal', category: 'alatan_rumah' },
+      { ar: 'مِصْبَاحٌ', my: 'Lampu', category: 'alatan_rumah' },
+      { ar: 'مِرْوَحَةٌ', my: 'Kipas', category: 'alatan_rumah' },
+      { ar: 'سَجَّادَةٌ', my: 'Sejadah / Karpet', category: 'alatan_rumah' },
+      { ar: 'سِتَارٌ', my: 'Langsir', category: 'alatan_rumah' },
+
+      // KOMPONEN 4: TEMPAT DALAM SEKOLAH
+      { ar: 'فَصْلٌ', my: 'Bilik Darjah / Kelas', category: 'tempat_sekolah' },
+      { ar: 'مَكْتَبَةٌ', my: 'Perpustakaan', category: 'tempat_sekolah' },
+      { ar: 'مَطْعَمٌ / مَقْصَفٌ', my: 'Kantin', category: 'tempat_sekolah' },
+      { ar: 'مَلْعَبٌ', my: 'Padang / Gelanggang', category: 'tempat_sekolah' },
+      { ar: 'مُصَلَّى', my: 'Surau', category: 'tempat_sekolah' },
+      { ar: 'إِدَارَةٌ', my: 'Pejabat', category: 'tempat_sekolah' },
+      { ar: 'حَمَّامٌ', my: 'Tandas', category: 'tempat_sekolah' },
+      { ar: 'قَاعَةٌ', my: 'Dewan', category: 'tempat_sekolah' },
+      { ar: 'مَعْمَلُ الْعُلُومِ', my: 'Makmal Sains', category: 'tempat_sekolah' },
+      { ar: 'مَعْمَلُ الْحَاسُوبِ', my: 'Makmal Komputer', category: 'tempat_sekolah' },
+      { ar: 'حَدِيقَةٌ', my: 'Taman', category: 'tempat_sekolah' },
+
+      // KOMPONEN 5: JENIS SUKAN
+      { ar: 'كُرَةُ الْقَدَمِ', my: 'Bola Sepak', category: 'sukan' },
+      { ar: 'كُرَةُ السَّلَّةِ', my: 'Bola Keranjang', category: 'sukan' },
+      { ar: 'كُرَةُ الطَّائِرَةِ', my: 'Bola Tampar', category: 'sukan' },
+      { ar: 'كُرَةُ الطَّاوِلَةِ', my: 'Ping Pong', category: 'sukan' },
+      { ar: 'كرة الرّيشَةِ', my: 'Badminton', category: 'sukan' },
+      { ar: 'السِّبَاحَةُ', my: 'Renang', category: 'sukan' },
+      { ar: 'الجَرْيُ', my: 'Larian', category: 'sukan' },
+      { ar: 'رُكُوبُ الدَّرَّاجَةِ', my: 'Berbasikal', category: 'sukan' },
+      { ar: 'الرِّمَايَةُ', my: 'Memanah', category: 'sukan' },
+
+      // KOMPONEN 6: CITA-CITA SAYA / PEKERJAAN
+      { ar: 'طَبِيبٌ', my: 'Doktor (Lelaki)', category: 'cita_cita' },
+      { ar: 'طَبِيبَةٌ', my: 'Doktor (Perempuan)', category: 'cita_cita' },
+      { ar: 'مُعَلِّمٌ / مُدَرِّسٌ', my: 'Guru (Lelaki)', category: 'cita_cita' },
+      { ar: 'مُعَلِّمَةٌ / مُدَرِّسَةٌ', my: 'Guru (Perempuan)', category: 'cita_cita' },
+      { ar: 'شُرْطِيٌّ', my: 'Polis (Lelaki)', category: 'cita_cita' },
+      { ar: 'شُرْطِيَّةٌ', my: 'Polis (Perempuan)', category: 'cita_cita' },
+      { ar: 'جُنْدِيٌّ', my: 'Tentera (Lelaki)', category: 'cita_cita' },
+      { ar: 'طَيَّارٌ', my: 'Jurupandu / Juruterbang (Lelaki)', category: 'cita_cita' },
+      { ar: 'مُهَنْدِسٌ', my: 'Jurutera (Lelaki)', category: 'cita_cita' },
+      { ar: 'مُهَنْدِسَةٌ', my: 'Jurutera (Perempuan)', category: 'cita_cita' },
+      { ar: 'إِطْفَائِيٌّ', my: 'Ahli Bomba', category: 'cita_cita' },
+      { ar: 'مُمَرِّضَةٌ', my: 'Jururawat', category: 'cita_cita' },
+      { ar: 'تَاجِرٌ', my: 'Peniaga (Lelaki)', category: 'cita_cita' },
+
+      // KOMPONEN 7: PERALATAN DALAM TANDAS
+      { ar: 'صَابُونٌ', my: 'Sabun', category: 'alatan_tandas' },
+      { ar: 'مَاءٌ', my: 'Air', category: 'alatan_tandas' },
+      { ar: 'مِنْشَفَةٌ', my: 'Tuala', category: 'alatan_tandas' },
+      { ar: 'مِرْآةٌ', my: 'Cermin', category: 'alatan_tandas' },
+      { ar: 'فُرْشَاةُ الأَسْنَانِ', my: 'Berus Gigi', category: 'alatan_tandas' },
+      { ar: 'مَجْعُونُ الأَسْنَانِ', my: 'Ubat Gigi', category: 'alatan_tandas' },
+      { ar: 'شَامْبُوه', my: 'Sampu', category: 'alatan_tandas' },
+      { ar: 'دُشٌّ', my: 'Pancuran Air (Shower)', category: 'alatan_tandas' },
+      { ar: 'حَوْضٌ', my: 'Singki / Kolam Air', category: 'alatan_tandas' },
+
+      // KOMPONEN 8: KENDERAAN
+      { ar: 'سَيَّارَةٌ', my: 'Kereta', category: 'kenderaan' },
+      { ar: 'حَافِلَةٌ', my: 'Bas', category: 'kenderaan' },
+      { ar: 'دَرَّاجَةٌ', my: 'Basikal', category: 'kenderaan' },
+      { ar: 'دَرَّاجَةٌ نَارِيَّةٌ', my: 'Motosikal', category: 'kenderaan' },
+      { ar: 'قِطَارٌ', my: 'Kereta Api', category: 'kenderaan' },
+      { ar: 'طَائِرَةٌ', my: 'Kapal Terbang', category: 'kenderaan' },
+      { ar: 'سَفِينَةٌ', my: 'Kapal Laut', category: 'kenderaan' },
+      { ar: 'قَارِبٌ', my: 'Sampan / Bot', category: 'kenderaan' },
+      { ar: 'شَاحِنَةٌ', my: 'Lori', category: 'kenderaan' },
+      { ar: 'سيَّارَةُ الأُجْرَةِ', my: 'Teksi', category: 'kenderaan' },
+      { ar: 'سَيَّارَةُ الإِسْعَافِ', my: 'Ambulans', category: 'kenderaan' },
+
+      // AHLI KELUARGA
+      { ar: 'أَبٌ', my: 'Bapa', category: 'keluarga' },
+      { ar: 'أُمٌّ', my: 'Ibu', category: 'keluarga' },
+      { ar: 'أَخٌ', my: 'Saudara Lelaki', category: 'keluarga' },
+      { ar: 'أُخْتٌ', my: 'Saudara Perempuan', category: 'keluarga' },
+      { ar: 'جَدٌّ', my: 'Datuk', category: 'keluarga' },
+      { ar: 'جَدَّةٌ', my: 'Nenek', category: 'keluarga' },
+      { ar: 'عَمٌّ', my: 'Bapa Saudara (Sebelah Bapa)', category: 'keluarga' },
+      { ar: 'عَمَّةٌ', my: 'Emak Saudara (Sebelah Bapa)', category: 'keluarga' },
+      { ar: 'خَالٌ', my: 'Bapa Saudara (Sebelah Ibu)', category: 'keluarga' },
+      { ar: 'خَالَةٌ', my: 'Emak Saudara (Sebelah Ibu)', category: 'keluarga' },
+      { ar: 'ابْنٌ', my: 'Anak Lelaki', category: 'keluarga' },
+      { ar: 'بِنْتٌ', my: 'Anak Perempuan', category: 'keluarga' },
+
+      // ANGGOTA BADAN
+      { ar: 'رَأْسٌ', my: 'Kepala', category: 'badan' },
+      { ar: 'شَعْرٌ', my: 'Rambut', category: 'badan' },
+      { ar: 'عَيْنٌ', my: 'Mata', category: 'badan' },
+      { ar: 'أُذُنٌ', my: 'Telinga', category: 'badan' },
+      { ar: 'أَنْفٌ', my: 'Hidung', category: 'badan' },
+      { ar: 'فَمٌ', my: 'Mulut', category: 'badan' },
+      { ar: 'لِسَانٌ', my: 'Lidah', category: 'badan' },
+      { ar: 'اسْنَانٌ', my: 'Gigi', category: 'badan' },
+      { ar: 'خَدٌّ', my: 'Pipi', category: 'badan' },
+      { ar: 'يَدٌ', my: 'Tangan', category: 'badan' },
+      { ar: 'رِجْلٌ', my: 'Kaki', category: 'badan' },
+      { ar: 'بَطْنٌ', my: 'Perut', category: 'badan' },
+
+      // ALATAN BELAJAR
+      { ar: 'قَلَمٌ', my: 'Pena / Pensel', category: 'alatan_belajar' },
+      { ar: 'قَلَمُ الرَّصَاصِ', my: 'Pensel', category: 'alatan_belajar' },
+      { ar: 'قَلَمُ التَّلْوِينِ', my: 'Pensel Warna', category: 'alatan_belajar' },
+      { ar: 'كِتَابٌ', my: 'Buku', category: 'alatan_belajar' },
+      { ar: 'دَفْتَرٌ', my: 'Buku Tulis', category: 'alatan_belajar' },
+      { ar: 'مِسْطَرَةٌ', my: 'Pembaris', category: 'alatan_belajar' },
+      { ar: 'مِمْحَاةٌ', my: 'Pemadam', category: 'alatan_belajar' },
+      { ar: 'مِقْصَصٌ / مِقَصٌّ', my: 'Gunting', category: 'alatan_belajar' },
+      { ar: 'مِقْلَمَةٌ', my: 'Kotak Pensel', category: 'alatan_belajar' },
+      { ar: 'حَقِيبَةٌ', my: 'Beg', category: 'alatan_belajar' },
+      { ar: 'ورَقَةٌ', my: 'Kertas', category: 'alatan_belajar' },
+
+      // PAKAIAN
+      { ar: 'قَمِيصٌ', my: 'Kemeja', category: 'pakaian' },
+      { ar: 'فُسْتَانٌ', my: 'Gaun', category: 'pakaian' },
+      { ar: 'بَنْطَلُونٌ', my: 'Seluar Panjang', category: 'pakaian' },
+      { ar: 'تنُّورَةٌ', my: 'Rok / Skirt', category: 'pakaian' },
+      { ar: 'حِذَاءٌ', my: 'Kasut', category: 'pakaian' },
+      { ar: 'جَوْرَبٌ', my: 'Stokin', category: 'pakaian' },
+      { ar: 'حِزَامٌ', my: 'Tali Pinggang', category: 'pakaian' },
+      { ar: 'خِمَارٌ', my: 'Tudung', category: 'pakaian' },
+      { ar: 'نَظَّارَةٌ', my: 'Cermin Mata', category: 'pakaian' },
+      { ar: 'قُبَّعَةٌ', my: 'Topi', category: 'pakaian' },
+
+      // MAKANAN & MINUMAN
+      { ar: 'أَرُزٌّ', my: 'Nasi', category: 'makanan' },
+      { ar: 'خُبْزٌ', my: 'Roti', category: 'makanan' },
+      { ar: 'لَحْمٌ', my: 'Daging', category: 'makanan' },
+      { ar: 'دَجَاجٌ', my: 'Ayam', category: 'makanan' },
+      { ar: 'سَمَكٌ', my: 'Ikan', category: 'makanan' },
+      { ar: 'بَيْضٌ', my: 'Telur', category: 'makanan' },
+      { ar: 'حَلِيبٌ', my: 'Susu', category: 'makanan' },
+      { ar: 'مَاءٌ', my: 'Air', category: 'makanan' },
+      { ar: 'شَايٌ', my: 'Teh', category: 'makanan' },
+      { ar: 'قَهْوَةٌ', my: 'Kopi', category: 'makanan' },
+      { ar: 'عَصِيرٌ', my: 'Jus', category: 'makanan' },
+      { ar: 'كَعْكَةٌ', my: 'Kek', category: 'makanan' },
+      { ar: 'فَوَاكِهُ', my: 'Buah-buahan', category: 'makanan' },
+
+      // HARI
+      { ar: 'الأَحَدُ', my: 'Ahad', category: 'hari' },
+      { ar: 'الإِثْنَيْنِ', my: 'Isnin', category: 'hari' },
+      { ar: 'الثُّلاَثَاءُ', my: 'Selasa', category: 'hari' },
+      { ar: 'الأَرْبِعَاءُ', my: 'Rabu', category: 'hari' },
+      { ar: 'الْخَمِيسُ', my: 'Khamis', category: 'hari' },
+      { ar: 'الْجُمُعَةُ', my: 'Jumaat', category: 'hari' },
+      { ar: 'السَّبْتُ', my: 'Sabtu', category: 'hari' },
+
+      // ALATAN DI DAPUR
+      { ar: 'مَطْبَخٌ', my: 'Dapur', category: 'alatan_dapur' },
+      { ar: 'صَحْنٌ', my: 'Pinggan', category: 'alatan_dapur' },
+      { ar: 'كُوبٌ', my: 'Cawan / Gelas', category: 'alatan_dapur' },
+      { ar: 'شَوْكَةٌ', my: 'Garfu', category: 'alatan_dapur' },
+      { ar: 'مِلْعَقَةٌ', my: 'Sudu', category: 'alatan_dapur' },
+      { ar: 'سِكِّينٌ', my: 'Pisau', category: 'alatan_dapur' },
+      { ar: 'قِدْرٌ', my: 'Periuk', category: 'alatan_dapur' },
+      { ar: 'إِبْرِيقٌ', my: 'Teko', category: 'alatan_dapur' },
+      { ar: 'مِقْلاَةٌ', my: 'Kuali', category: 'alatan_dapur' },
+      { ar: 'ثَلاَّجَةٌ', my: 'Peti Sejuk', category: 'alatan_dapur' },
+
+      // HAIWAN
+      { ar: 'قِطٌّ', my: 'Kucing', category: 'haiwan' },
+      { ar: 'كَلْبٌ', my: 'Anjing', category: 'haiwan' },
+      { ar: 'أَرْنَبٌ', my: 'Arnab', category: 'haiwan' },
+      { ar: 'طَائِرٌ', my: 'Burung', category: 'haiwan' },
+      { ar: 'سَمَكَةٌ', my: 'Ikan', category: 'haiwan' },
+      { ar: 'بَقَرَةٌ', my: 'Lembu', category: 'haiwan' },
+      { ar: 'غَنَمٌ', my: 'Kambing', category: 'haiwan' },
+      { ar: 'حِصَانٌ', my: 'Kuda', category: 'haiwan' },
+      { ar: 'فِيلٌ', my: 'Gajah', category: 'haiwan' },
+      { ar: 'أَسَدٌ', my: 'Singa', category: 'haiwan' },
+      { ar: 'نَمِرٌ', my: 'Harimau', category: 'haiwan' },
+      { ar: 'قِرْدٌ', my: 'Monyet', category: 'haiwan' },
+      { ar: 'تِمْسَاحٌ', my: 'Buaya', category: 'haiwan' },
+      { ar: 'ثُعْبَانٌ', my: 'Ular', category: 'haiwan' }
+    ];
+
+    // --- GENERATOR SOALAN SILIBUS KSSR ---
+    const generateQuestionsForGrade = (grade) => {
+      const easy = [];
+      const medium = [];
+      const hard = [];
+
+      const currBank = globalDictionary;
+      const fallbackBank = currBank.length ? currBank : globalDictionary.slice(0, 10);
+
+      for (let i = 1; i <= 30; i++) {
+        const item = fallbackBank[(i - 1) % fallbackBank.length];
+        easy.push({
+          id: `g${grade}_e${i}`,
+          type: 'mcq',
+          title: `Soalan ${i}`,
+          instruction: 'Apakah maksud perkataan Bahasa Arab di bawah?',
+          question: item.ar,
+          options: [item.my, 'Pilihan A', 'Pilihan B'].sort(() => Math.random() - 0.5),
+          answer: item.my
+        });
+      }
+
+      for (let i = 1; i <= 30; i++) {
+        const item = fallbackBank[(i - 1) % fallbackBank.length];
+        medium.push({
+          id: `g${grade}_m${i}`,
+          type: 'mcq',
+          title: `Soalan ${i}`,
+          instruction: 'Pilih terjemahan Bahasa Arab yang betul bagi perkataan ini:',
+          question: `Terjemahan: ${item.my}`,
+          arabicVoice: item.ar,
+          options: [item.ar, 'مَاكِتٌ', 'كِتَابٌ'].sort(() => Math.random() - 0.5),
+          answer: item.ar
+        });
+      }
+
+      for (let i = 1; i <= 30; i++) {
+        const item = fallbackBank[(i - 1) % fallbackBank.length];
+        const missingChar = item.ar.charAt(0);
+        hard.push({
+          id: `g${grade}_h${i}`,
+          type: 'fill_missing',
+          title: `Soalan ${i}`,
+          instruction: 'Lengkapkan huruf yang hilang bagi perkataan Arab ini:',
+          question: item.ar,
+          given: [missingChar, 'أ', 'ب', 'ت'].sort(() => Math.random() - 0.5),
+          display: `_ ${item.ar.slice(1)}`,
+          answer: missingChar
+        });
+      }
+
+      return { easy, medium, hard };
+    };
+
+    const exercisesData = {
+      1: generateQuestionsForGrade(1),
+      2: generateQuestionsForGrade(2),
+      3: generateQuestionsForGrade(3),
+      4: generateQuestionsForGrade(4),
+      5: generateQuestionsForGrade(5),
+      6: generateQuestionsForGrade(6)
+    };
+
+    // --- MAIN APP COMPONENT ---
+    function App() {
+      const [authMode, setAuthMode] = useState('login'); 
+      const [loggedInEmail, setLoggedInEmail] = useState('');
+      const [user, setUser] = useState(null);
+      const [inputEmail, setInputEmail] = useState('');
+      const [inputPassword, setInputPassword] = useState('');
+      const [inputName, setInputName] = useState('');
+      const [selectedAvatar, setSelectedAvatar] = useState('cat');
+      const [authError, setAuthError] = useState('');
+      const [authSuccess, setAuthSuccess] = useState('');
+
+      const [currentScreen, setCurrentScreen] = useState('dashboard'); 
+      const [selectedGrade, setSelectedGrade] = useState(1);
+      const [selectedDifficulty, setSelectedDifficulty] = useState(null);
+      const [selectedDuration, setSelectedDuration] = useState(180); 
+      const [volume, setVolume] = useState(40);
+      const [isMusicOn, setIsMusicOn] = useState(true);
+
+      const [leaderboard, setLeaderboard] = useState(() => {
+        const saved = localStorage.getItem('arabic_academy_leaderboard');
+        return saved ? JSON.parse(saved) : [
+          { name: 'Ahmad', avatar: 'dragon', xp: 240, stars: 20 },
+          { name: 'Siti', avatar: 'cat', xp: 180, stars: 14 },
+          { name: 'Ali', avatar: 'frog', xp: 90, stars: 8 }
+        ];
+      });
+
+      useEffect(() => {
+        const currentEmail = localStorage.getItem('arabic_academy_active_email');
+        if (currentEmail) {
+          const accounts = JSON.parse(localStorage.getItem('arabic_academy_accounts') || '{}');
+          if (accounts[currentEmail]) {
+            setLoggedInEmail(currentEmail);
+            if (!accounts[currentEmail].name) {
+              setAuthMode('profile_name');
+            } else {
+              setUser(accounts[currentEmail]);
+            }
+          }
+        }
+      }, []);
+
+      useEffect(() => {
+        const handleInteraction = () => {
+          if (isMusicOn) {
+            soundFX.startBgm();
+          }
+          window.removeEventListener('click', handleInteraction);
+        };
+        window.addEventListener('click', handleInteraction);
+        return () => window.removeEventListener('click', handleInteraction);
+      }, [isMusicOn]);
+
+      const saveProgress = (newXp, newStars) => {
+        if (!user || !loggedInEmail) return;
+        const totalCompleted = (user.completedQuestions || 0) + 1;
+        const totalQuestions = 180; 
+        const progressPercentage = Math.min(100, Math.round((totalCompleted / totalQuestions) * 100));
+
+        const updatedUser = {
+          ...user,
+          xp: user.xp + newXp,
+          stars: user.stars + newStars,
+          completedQuestions: totalCompleted,
+          progressPercentage: progressPercentage
+        };
+
+        setUser(updatedUser);
+
+        const accounts = JSON.parse(localStorage.getItem('arabic_academy_accounts') || '{}');
+        accounts[loggedInEmail] = updatedUser;
+        localStorage.setItem('arabic_academy_accounts', JSON.stringify(accounts));
+
+        setLeaderboard(prev => {
+          const existingIdx = prev.findIndex(item => item.name.toLowerCase() === updatedUser.name.toLowerCase());
+          let newList = [...prev];
+          if (existingIdx >= 0) {
+            newList[existingIdx] = { 
+              name: updatedUser.name, 
+              avatar: updatedUser.avatar || 'cat', 
+              xp: updatedUser.xp, 
+              stars: updatedUser.stars 
+            };
+          } else {
+            newList.push({ 
+              name: updatedUser.name, 
+              avatar: updatedUser.avatar || 'cat', 
+              xp: updatedUser.xp, 
+              stars: updatedUser.stars 
+            });
+          }
+          newList.sort((a, b) => b.xp - a.xp);
+          localStorage.setItem('arabic_academy_leaderboard', JSON.stringify(newList));
+          return newList;
+        });
+      };
+
+      const handleAuthLogin = (e) => {
+        e.preventDefault();
+        setAuthError('');
+        setAuthSuccess('');
+
+        const accounts = JSON.parse(localStorage.getItem('arabic_academy_accounts') || '{}');
+        const emailKey = inputEmail.trim().toLowerCase();
+
+        if (!accounts[emailKey]) {
+          setAuthError('Akaun dengan emel ini belum berdaftar!');
+          return;
+        }
+
+        if (accounts[emailKey].password !== inputPassword) {
+          setAuthError('Kata laluan tidak tepat!');
+          return;
+        }
+
+        localStorage.setItem('arabic_academy_active_email', emailKey);
+        setLoggedInEmail(emailKey);
+
+        if (!accounts[emailKey].name) {
+          setAuthMode('profile_name');
+        } else {
+          setUser(accounts[emailKey]);
+          soundFX.startBgm();
+          setIsMusicOn(true);
+        }
+      };
+
+      const handleAuthRegister = (e) => {
+        e.preventDefault();
+        setAuthError('');
+        setAuthSuccess('');
+
+        const emailKey = inputEmail.trim().toLowerCase();
+        const accounts = JSON.parse(localStorage.getItem('arabic_academy_accounts') || '{}');
+
+        if (accounts[emailKey]) {
+          setAuthError('Emel ini telah berdaftar. Sila log masuk.');
+          return;
+        }
+
+        accounts[emailKey] = {
+          email: emailKey,
+          password: inputPassword,
+          name: '',
+          avatar: selectedAvatar,
+          xp: 0,
+          stars: 0,
+          completedQuestions: 0,
+          progressPercentage: 0
+        };
+
+        localStorage.setItem('arabic_academy_accounts', JSON.stringify(accounts));
+        localStorage.setItem('arabic_academy_active_email', emailKey);
+        setLoggedInEmail(emailKey);
+        setAuthMode('profile_name');
+      };
+
+      const handleAuthForgot = (e) => {
+        e.preventDefault();
+        setAuthError('');
+        setAuthSuccess('');
+
+        const emailKey = inputEmail.trim().toLowerCase();
+        const accounts = JSON.parse(localStorage.getItem('arabic_academy_accounts') || '{}');
+
+        if (!accounts[emailKey]) {
+          setAuthError('Emel ini tiada dalam rekod sistem.');
+          return;
+        }
+
+        setAuthSuccess(`Pautan tetapan semula telah dihantar ke emel ${emailKey}. (Kata laluan semasa: ${accounts[emailKey].password})`);
+      };
+
+      const handleSaveProfileName = (e) => {
+        e.preventDefault();
+        if (!inputName.trim()) return;
+
+        const accounts = JSON.parse(localStorage.getItem('arabic_academy_accounts') || '{}');
+        const activeUser = accounts[loggedInEmail] || {
+          email: loggedInEmail,
+          xp: 0,
+          stars: 0,
+          completedQuestions: 0,
+          progressPercentage: 0
+        };
+
+        activeUser.name = inputName.trim();
+        activeUser.avatar = selectedAvatar;
+        accounts[loggedInEmail] = activeUser;
+        localStorage.setItem('arabic_academy_accounts', JSON.stringify(accounts));
+
+        setUser(activeUser);
+
+        const existingLeader = leaderboard.find(l => l.name.toLowerCase() === activeUser.name.toLowerCase());
+        if (!existingLeader) {
+          const newList = [...leaderboard, { 
+            name: activeUser.name, 
+            avatar: activeUser.avatar, 
+            xp: activeUser.xp, 
+            stars: activeUser.stars 
+          }].sort((a, b) => b.xp - a.xp);
+          setLeaderboard(newList);
+          localStorage.setItem('arabic_academy_leaderboard', JSON.stringify(newList));
+        }
+
+        soundFX.startBgm();
+        setIsMusicOn(true);
+      };
+
+      const handleLogout = () => {
+        localStorage.removeItem('arabic_academy_active_email');
+        setUser(null);
+        setLoggedInEmail('');
+        setAuthMode('login');
+        setInputEmail('');
+        setInputPassword('');
+        setInputName('');
+      };
+
+      const handleVolumeChange = (e) => {
+        const val = Number(e.target.value);
+        setVolume(val);
+        soundFX.setVolume(val);
+      };
+
+      const toggleMusic = () => {
+        if (isMusicOn) {
+          soundFX.stopBgm();
+          setIsMusicOn(false);
+        } else {
+          soundFX.startBgm();
+          setIsMusicOn(true);
+        }
+      };
+
+      const CartoonPicker = () => (
+        <div className="space-y-2">
+          <label className="block text-xs font-bold text-gray-600 text-center">Pilih Kartun Identiti Diri:</label>
+          <div className="grid grid-cols-4 gap-2">
+            {CARTOON_AVATARS.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                onClick={() => setSelectedAvatar(item.id)}
+                className={`p-2 rounded-2xl flex flex-col items-center gap-1 transition border-2 ${
+                  selectedAvatar === item.id 
+                    ? 'border-brand-teal bg-teal-50 shadow-md scale-105' 
+                    : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className={`w-10 h-10 ${item.bg} text-white rounded-xl flex items-center justify-center text-lg shadow`}>
+                  <i className={`fa-solid ${item.icon}`}></i>
+                </div>
+                <span className="text-[10px] font-bold text-gray-700 truncate w-full text-center">{item.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+
+      if (!user) {
+        return (
+          <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-teal-400 via-blue-500 to-purple-600">
+            <div className="bg-white rounded-3xl p-8 shadow-2xl max-w-md w-full space-y-6">
+              <div className="flex justify-center text-center">
+                <LogoApp />
+              </div>
+
+              {authError && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold text-center border border-red-200">
+                  {authError}
+                </div>
+              )}
+
+              {authSuccess && (
+                <div className="bg-emerald-50 text-emerald-700 p-3 rounded-xl text-xs font-bold text-center border border-emerald-200">
+                  {authSuccess}
+                </div>
+              )}
+
+              {authMode === 'login' && (
+                <form onSubmit={handleAuthLogin} className="space-y-4">
+                  <h2 className="text-xl font-bold text-gray-800 text-center">LOG MASUK AKAUN</h2>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Emel Pengguna:</label>
+                    <input 
+                      type="email" 
+                      placeholder="contoh@gmail.com"
+                      value={inputEmail}
+                      onChange={(e) => setInputEmail(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-gray-100 border border-gray-300 focus:outline-none focus:border-brand-teal font-semibold text-gray-800"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Kata Laluan:</label>
+                    <input 
+                      type="password" 
+                      placeholder="••••••••"
+                      value={inputPassword}
+                      onChange={(e) => setInputPassword(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-gray-100 border border-gray-300 focus:outline-none focus:border-brand-teal font-semibold text-gray-800"
+                      required
+                    />
+                  </div>
+
+                  <button 
+                    type="submit"
+                    className="w-full bg-brand-teal hover:bg-teal-600 text-white font-bold py-3.5 rounded-2xl shadow-xl transition text-base flex items-center justify-center gap-2"
+                  >
+                    <i className="fa-solid fa-right-to-bracket"></i>
+                    LOG MASUK
+                  </button>
+
+                  <div className="flex flex-col gap-2 pt-2 text-center text-xs font-bold">
+                    <button 
+                      type="button" 
+                      onClick={() => { setAuthMode('register'); setAuthError(''); setAuthSuccess(''); }}
+                      className="text-brand-teal hover:underline"
+                    >
+                      Belum ada akaun? Daftar sekarang
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => { setAuthMode('forgot'); setAuthError(''); setAuthSuccess(''); }}
+                      className="text-gray-400 hover:text-gray-600 hover:underline"
+                    >
+                      Lupa kata laluan?
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {authMode === 'register' && (
+                <form onSubmit={handleAuthRegister} className="space-y-4">
+                  <h2 className="text-xl font-bold text-gray-800 text-center">DAFTAR AKAUN BARU</h2>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Emel Pengguna:</label>
+                    <input 
+                      type="email" 
+                      placeholder="contoh@gmail.com"
+                      value={inputEmail}
+                      onChange={(e) => setInputEmail(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-gray-100 border border-gray-300 focus:outline-none focus:border-brand-teal font-semibold text-gray-800"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Kata Laluan:</label>
+                    <input 
+                      type="password" 
+                      placeholder="••••••••"
+                      value={inputPassword}
+                      onChange={(e) => setInputPassword(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-gray-100 border border-gray-300 focus:outline-none focus:border-brand-teal font-semibold text-gray-800"
+                      required
+                    />
+                  </div>
+
+                  <CartoonPicker />
+
+                  <button 
+                    type="submit"
+                    className="w-full bg-brand-teal hover:bg-teal-600 text-white font-bold py-3.5 rounded-2xl shadow-xl transition text-base flex items-center justify-center gap-2"
+                  >
+                    <i className="fa-solid fa-user-plus"></i>
+                    DAFTAR AKAUN
+                  </button>
+
+                  <div className="text-center text-xs font-bold pt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }}
+                      className="text-brand-teal hover:underline"
+                    >
+                      Sudah ada akaun? Log Masuk
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {authMode === 'forgot' && (
+                <form onSubmit={handleAuthForgot} className="space-y-4">
+                  <h2 className="text-xl font-bold text-gray-800 text-center">LUPA KATA LALUAN</h2>
+                  <p className="text-xs text-gray-500 text-center">Masukkan emel berdaftar anda untuk menerima maklumat tetapan semula kata laluan.</p>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Emel Pengguna:</label>
+                    <input 
+                      type="email" 
+                      placeholder="contoh@gmail.com"
+                      value={inputEmail}
+                      onChange={(e) => setInputEmail(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-gray-100 border border-gray-300 focus:outline-none focus:border-brand-teal font-semibold text-gray-800"
+                      required
+                    />
+                  </div>
+
+                  <button 
+                    type="submit"
+                    className="w-full bg-brand-yellow hover:bg-yellow-400 text-gray-900 font-bold py-3.5 rounded-2xl shadow-xl transition text-base flex items-center justify-center gap-2"
+                  >
+                    <i className="fa-solid fa-key"></i>
+                    HANTAR TETAPAN SEMULA
+                  </button>
+
+                  <div className="text-center text-xs font-bold pt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }}
+                      className="text-brand-teal hover:underline"
+                    >
+                      Kembali ke Log Masuk
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {authMode === 'profile_name' && (
+                <form onSubmit={handleSaveProfileName} className="space-y-4 text-center">
+                  <h2 className="text-xl font-bold text-gray-800">ISIKAN NAMA & PROFIL ANDA</h2>
+                  <p className="text-xs text-gray-500">Log masuk berjaya! Sila pilih kartun identiti dan masukkan nama anda.</p>
+                  
+                  <CartoonPicker />
+
+                  <input 
+                    type="text" 
+                    placeholder="Nama Pengguna..."
+                    value={inputName}
+                    onChange={(e) => setInputName(e.target.value)}
+                    className="w-full px-5 py-3.5 rounded-2xl bg-gray-100 border border-gray-300 focus:outline-none focus:border-brand-teal font-bold text-center text-lg shadow-inner"
+                    required
+                  />
+                  <button 
+                    type="submit"
+                    className="w-full bg-brand-teal hover:bg-teal-600 text-white font-bold py-4 rounded-2xl shadow-xl transition text-lg flex items-center justify-center gap-2"
+                  >
+                    <i className="fa-solid fa-play"></i>
+                    MASUK KEDALAM DASHBOARD
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      const activeAvatar = CARTOON_AVATARS.find(a => a.id === user.avatar) || CARTOON_AVATARS[0];
+
+      return (
+        <div className="min-h-screen flex flex-col justify-between">
+          <header className="bg-white shadow-md px-6 py-4 sticky top-0 z-50">
+            <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+              <div 
+                className="cursor-pointer"
+                onClick={() => {
+                  setCurrentScreen('dashboard');
+                  setSelectedDifficulty(null);
+                }}
+              >
+                <LogoApp />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200">
+                  <button onClick={toggleMusic} className="text-brand-teal font-bold text-xs flex items-center gap-1">
+                    <i className={`fa-solid ${isMusicOn ? 'fa-music animate-bounce' : 'fa-volume-xmark'}`}></i>
+                    {isMusicOn ? 'Muzik: ON' : 'Muzik: OFF'}
+                  </button>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="100" 
+                    value={volume}
+                    onChange={handleVolumeChange}
+                    className="w-20 accent-brand-teal cursor-pointer"
+                    title="Volume Muzik (1-100)"
+                  />
+                  <span className="text-xs font-bold text-gray-600">{volume}%</span>
+                </div>
+
+                <div className="flex items-center gap-3 bg-gray-100 px-4 py-1.5 rounded-full border border-gray-200">
+                  <div className={`w-7 h-7 ${activeAvatar.bg} text-white rounded-full flex items-center justify-center text-xs shadow`}>
+                    <i className={`fa-solid ${activeAvatar.icon}`}></i>
+                  </div>
+                  <div className="flex items-center gap-1 font-bold text-amber-500 text-sm">
+                    <i className="fa-solid fa-star"></i>
+                    <span>{user.stars || 0}</span>
+                  </div>
+                  <div className="h-4 w-px bg-gray-300"></div>
+                  <div className="flex items-center gap-1 font-bold text-brand-teal text-sm">
+                    <i className="fa-solid fa-bolt"></i>
+                    <span>{user.xp || 0} XP</span>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleLogout}
+                  className="bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-full text-xs font-bold border border-rose-200 flex items-center gap-1 transition"
+                  title="Keluar Akaun"
+                >
+                  <i className="fa-solid fa-right-from-bracket"></i>
+                  Log Keluar
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-6xl mx-auto w-full p-6 flex-grow">
+            {currentScreen === 'dashboard' && (
+              <DashboardView 
+                user={user}
+                onSelectGrade={(grade) => {
+                  setSelectedGrade(grade);
+                  setCurrentScreen('difficulty');
+                }}
+                onOpenDictionary={() => setCurrentScreen('dictionary')}
+                onOpenInteractiveModule={() => setCurrentScreen('interactive')}
+              />
+            )}
+
+            {currentScreen === 'difficulty' && (
+              <DifficultyView 
+                grade={selectedGrade}
+                onSelectDifficulty={(diff, duration) => {
+                  setSelectedDifficulty(diff);
+                  setSelectedDuration(duration);
+                  setCurrentScreen('exercise');
+                }}
+                onBack={() => setCurrentScreen('dashboard')}
+              />
+            )}
+
+            {currentScreen === 'exercise' && (
+              <ExerciseView 
+                grade={selectedGrade}
+                difficulty={selectedDifficulty}
+                durationSeconds={selectedDuration}
+                onBack={() => {
+                  setCurrentScreen('difficulty');
+                }}
+                onComplete={(addedXp, addedStars) => {
+                  saveProgress(addedXp, addedStars);
+                }}
+              />
+            )}
+
+            {currentScreen === 'dictionary' && (
+              <DictionaryView onBack={() => setCurrentScreen('dashboard')} />
+            )}
+
+            {/* --- MODUL INTERAKTIF (PERMAINAN CANDY CRUSH, ULAR TANGGA & WORDSEARCH) --- */}
+            {currentScreen === 'interactive' && (
+              <div className="max-w-4xl mx-auto space-y-6">
+                <div className="flex justify-between items-center">
+                  <button onClick={() => setCurrentScreen('dashboard')} className="text-gray-400 hover:text-gray-600 font-bold flex items-center gap-2">
+                    <i className="fa-solid fa-arrow-left"></i> Kembali ke Utama
+                  </button>
+                  <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i className="fa-solid fa-gamepad text-brand-teal"></i> Modul Interaktif & Permainan Kosa Kata
+                  </h2>
+                </div>
+
+                <div className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 space-y-6">
+                  <p className="text-sm text-gray-600">
+                    Selamat datang ke Modul Interaktif! Nikmati aktiviti permainan interaktif yang disediakan di bawah:
+                  </p>
+
+                  {/* Permainan Baharu: Candy Crush Arab */}
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                      <i className="fa-solid fa-candy-cane text-brand-coral"></i> Permainan Candy Crush Arab (20 Soalan)
+                    </h3>
+                    <div style={{ position: 'relative', width: '100%', height: 0, paddingTop: '100.0000%', paddingBottom: 0, boxShadow: '0 2px 8px 0 rgba(63,69,81,0.16)', marginTop: '1.6em', marginBottom: '0.9em', overflow: 'hidden', borderRadius: '8px', willChange: 'transform' }}>
+                      <iframe loading="lazy" style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, border: 'none', padding: 0, margin: 0 }}
+                        src="https://www.canva.com/design/DAHQ3Nf-g7E/G2MOlDbwlmirfvvd5pFtRA/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen">
+                      </iframe>
+                    </div>
+                    <div className="text-center">
+                      <a href="https://www.canva.com/design/DAHQ3Nf-g7E/G2MOlDbwlmirfvvd5pFtRA/view?utm_content=DAHQ3Nf-g7E&amp;utm_campaign=designshare&amp;utm_medium=embeds&amp;utm_source=link" target="_blank" rel="noopener" className="text-xs text-brand-teal font-bold hover:underline">
+                        Permainan Candy Crush Arab (20 Soalan) by Adilah Zaimi
+                      </a>
+                    </div>
+                  </div>
+
+                  <hr className="border-gray-100 my-6" />
+
+                  {/* Permainan Ular Tangga Arab (KSSR) */}
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                      <i className="fa-solid fa-dice text-brand-yellow"></i> Permainan Ular Tangga Arab (KSSR)
+                    </h3>
+                    <div style={{ position: 'relative', width: '100%', height: 0, paddingTop: '100.0000%', paddingBottom: 0, boxShadow: '0 2px 8px 0 rgba(63,69,81,0.16)', marginTop: '1.6em', marginBottom: '0.9em', overflow: 'hidden', borderRadius: '8px', willChange: 'transform' }}>
+                      <iframe loading="lazy" style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, border: 'none', padding: 0, margin: 0 }}
+                        src="https://www.canva.com/design/DAHQ1873ecQ/lzPCi7w0PfFnvx89Qq1KGw/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen">
+                      </iframe>
+                    </div>
+                    <div className="text-center">
+                      <a href="https://www.canva.com/design/DAHQ1873ecQ/lzPCi7w0PfFnvx89Qq1KGw/view?utm_content=DAHQ1873ecQ&amp;utm_campaign=designshare&amp;utm_medium=embeds&amp;utm_source=link" target="_blank" rel="noopener" className="text-xs text-brand-teal font-bold hover:underline">
+                        Permainan Ular Tangga Arab (KSSR) by adilah
+                      </a>
+                    </div>
+                  </div>
+
+                  <hr className="border-gray-100 my-6" />
+
+                  {/* Permainan Wordsearch Puzzle */}
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                      <i className="fa-solid fa-puzzle-piece text-brand-teal"></i> Permainan Worksearch Puzzle Bahasa Arab (15 Set Kosa Kata KSSR Tahun 1–6)
+                    </h3>
+                    <div style={{ position: 'relative', width: '100%', height: 0, paddingTop: '100.0000%', paddingBottom: 0, boxShadow: '0 2px 8px 0 rgba(63,69,81,0.16)', marginTop: '1.6em', marginBottom: '0.9em', overflow: 'hidden', borderRadius: '8px', willChange: 'transform' }}>
+                      <iframe loading="lazy" style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, border: 'none', padding: 0, margin: 0 }}
+                        src="https://www.canva.com/design/DAHQ3fp0B_c/BR25bNynR6ESOIiTDNYo6g/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen">
+                      </iframe>
+                    </div>
+                    <div className="text-center">
+                      <a href="https://www.canva.com/design/DAHQ3fp0B_c/BR25bNynR6ESOIiTDNYo6g/view?utm_content=DAHQ3fp0B_c&amp;utm_campaign=designshare&amp;utm_medium=embeds&amp;utm_source=link" target="_blank" rel="noopener" className="text-xs text-brand-teal font-bold hover:underline">
+                        Wordsearch Arab 15 Set KSSR Tahap 1-6 by Adilah Zaimi[cite: 1]
+                      </a>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+            {currentScreen === 'leaderboard' && (
+              <LeaderboardView leaderboard={leaderboard} onBack={() => setCurrentScreen('dashboard')} />
+            )}
+          </main>
+
+          <footer className="bg-white border-t border-gray-200 py-3 px-6 sticky bottom-0 z-40">
+            <div className="max-w-md mx-auto flex justify-around items-center">
+              <button 
+                onClick={() => setCurrentScreen('dashboard')}
+                className={`flex flex-col items-center gap-1 ${currentScreen === 'dashboard' ? 'text-brand-teal font-extrabold' : 'text-gray-400'}`}
+              >
+                <i className="fa-solid fa-house text-xl"></i>
+                <span className="text-xs">Utama</span>
+              </button>
+              <button 
+                onClick={() => setCurrentScreen('interactive')}
+                className={`flex flex-col items-center gap-1 ${currentScreen === 'interactive' ? 'text-brand-teal font-extrabold' : 'text-gray-400'}`}
+              >
+                <i className="fa-solid fa-gamepad text-xl"></i>
+                <span className="text-xs">Modul Interaktif</span>
+              </button>
+              <button 
+                onClick={() => setCurrentScreen('dictionary')}
+                className={`flex flex-col items-center gap-1 ${currentScreen === 'dictionary' ? 'text-brand-teal font-extrabold' : 'text-gray-400'}`}
+              >
+                <i className="fa-solid fa-book-bookmark text-xl"></i>
+                <span className="text-xs">Kamus</span>
+              </button>
+              <button 
+                onClick={() => setCurrentScreen('leaderboard')}
+                className={`flex flex-col items-center gap-1 ${currentScreen === 'leaderboard' ? 'text-brand-teal font-extrabold' : 'text-gray-400'}`}
+              >
+                <i className="fa-solid fa-trophy text-xl"></i>
+                <span className="text-xs">Pencapaian</span>
+              </button>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    // --- DASHBOARD VIEW ---
+    function DashboardView({ user, onSelectGrade, onOpenDictionary, onOpenInteractiveModule }) {
+      const activeAvatar = CARTOON_AVATARS.find(a => a.id === user.avatar) || CARTOON_AVATARS[0];
+
+      const grades = [
+        { level: 1, arTitle: 'السَّنَةُ الأُولَى', myTitle: 'Tahun 1', color: 'bg-emerald-400', icon: 'fa-shapes' },
+        { level: 2, arTitle: 'السَّنَةُ الثَّانِيَةُ', myTitle: 'Tahun 2', color: 'bg-cyan-400', icon: 'fa-cubes' },
+        { level: 3, arTitle: 'السَّنَةُ الثَّالِثَةُ', myTitle: 'Tahun 3', color: 'bg-blue-400', icon: 'fa-utensils' },
+        { level: 4, arTitle: 'السَّنَةُ الرَّابِعَةُ', myTitle: 'Tahun 4', color: 'bg-indigo-400', icon: 'fa-school' },
+        { level: 5, arTitle: 'السَّنَةُ الخَامِسَةُ', myTitle: 'Tahun 5', color: 'bg-purple-400', icon: 'fa-kitchen-set' },
+        { level: 6, arTitle: 'السَّنَةُ السَّادِسَةُ', myTitle: 'Tahun 6', color: 'bg-pink-400', icon: 'fa-briefcase' },
+      ];
+
+      return (
+        <div className="space-y-8">
+          <div className="bg-gradient-to-r from-brand-teal to-blue-500 rounded-3xl p-8 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className={`w-8 h-8 ${activeAvatar.bg} text-white rounded-full flex items-center justify-center text-sm shadow border border-white`}>
+                  <i className={`fa-solid ${activeAvatar.icon}`}></i>
+                </div>
+                <span className="bg-white/20 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                  {user.name} ({activeAvatar.name})
+                </span>
+              </div>
+              
+              <h2 className="arabic-text text-3xl md:text-4xl font-extrabold text-amber-300 leading-relaxed">
+                أَهْلاً وَسَهْلاً بِكُمْ فِي ARABIC ACADEMY
+              </h2>
+              
+              <p className="mt-1 text-white/90 text-sm">Selamat datang {user.name}! Sila pilih tahun persekolahan atau modul interaktif di bawah.</p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+              <button 
+                onClick={onOpenInteractiveModule}
+                className="bg-brand-yellow text-gray-900 hover:bg-yellow-400 px-6 py-3 rounded-2xl font-bold shadow-lg transition flex items-center gap-2"
+              >
+                <i className="fa-solid fa-gamepad text-xl"></i>
+                Modul Interaktif
+              </button>
+              <button 
+                onClick={onOpenDictionary}
+                className="bg-white text-brand-teal hover:bg-teal-50 px-6 py-3 rounded-2xl font-bold shadow-lg transition flex items-center gap-2"
+              >
+                <i className="fa-solid fa-book-open text-xl"></i>
+                Buka Kamus Arab
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+              <div className="w-14 h-14 bg-teal-100 text-brand-teal rounded-2xl flex items-center justify-center text-2xl font-bold">
+                <i className="fa-solid fa-chart-line"></i>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-bold uppercase">Kemajuan Keseluruhan</p>
+                <h3 className="text-2xl font-extrabold text-gray-800">{user.completedQuestions || 0} Soalan Selesai</h3>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+              <div className="w-14 h-14 bg-blue-100 text-brand-blue rounded-2xl flex items-center justify-center text-2xl font-bold">
+                <i className="fa-solid fa-percent"></i>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-bold uppercase">Peratus Selesai</p>
+                <h3 className="text-2xl font-extrabold text-gray-800">{user.progressPercentage || 0}% Complete</h3>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+              <div className="w-14 h-14 bg-amber-100 text-amber-500 rounded-2xl flex items-center justify-center text-2xl font-bold">
+                <i className="fa-solid fa-star"></i>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-bold uppercase">Bintang Dikumpul</p>
+                <h3 className="text-2xl font-extrabold text-gray-800">★ {user.stars || 0} Bintang</h3>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+              <i className="fa-solid fa-graduation-cap text-brand-teal"></i>
+              Pilih Aras Tahun (KSSR)
+            </h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {grades.map((g) => (
+                <div 
+                  key={g.level}
+                  onClick={() => onSelectGrade(g.level)}
+                  className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 hover:shadow-xl transition cursor-pointer transform hover:-translate-y-1 relative overflow-hidden group flex flex-col items-center justify-center text-center"
+                >
+                  <div className={`w-16 h-16 ${g.color} text-white rounded-2xl flex items-center justify-center text-3xl shadow-md mb-4 group-hover:scale-110 transition`}>
+                    <i className={`fa-solid ${g.icon}`}></i>
+                  </div>
+                  
+                  <h4 className="arabic-text text-3xl font-extrabold text-brand-teal mb-1">{g.arTitle}</h4>
+                  <p className="text-xl font-bold text-gray-800">({g.myTitle})</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- DIFFICULTY VIEW ---
+    function DifficultyView({ grade, onSelectDifficulty, onBack }) {
+      const [selectedMinutes, setSelectedMinutes] = useState(3);
+
+      const timeOptions = [
+        { label: '1 Minit', value: 1 },
+        { label: '3 Minit', value: 3 },
+        { label: '6 Minit', value: 6 },
+        { label: '9 Minit', value: 9 },
+        { label: '12 Minit', value: 12 },
+        { label: '15 Minit', value: 15 }
+      ];
+
+      const levels = [
+        { id: 'easy', ar: 'سَهْلٌ', my: 'Mudah', icon: 'fa-seedling', color: 'from-emerald-400 to-teal-500', desc: 'Soalan Pilihan Berganda (Asas)' },
+        { id: 'medium', ar: 'مُتَوَسِّطٌ', my: 'Sederhana', icon: 'fa-brain', color: 'from-amber-400 to-orange-500', desc: 'Soalan Terjemahan Perkataan' },
+        { id: 'hard', ar: 'صَعْبٌ', my: 'Sukar', icon: 'fa-fire', color: 'from-rose-400 to-red-500', desc: 'Isikan Huruf Tempat Kosong' }
+      ];
+
+      return (
+        <div className="max-w-4xl mx-auto space-y-8">
+          <button onClick={onBack} className="text-gray-400 hover:text-gray-600 font-bold flex items-center gap-2">
+            <i className="fa-solid fa-arrow-left"></i> Kembali
+          </button>
+          
+          <div className="text-center py-2">
+            <h2 className="text-3xl font-bold text-gray-800">Tahap Kesukaran & Pemilihan Masa (Tahun {grade})</h2>
+            <p className="text-sm text-gray-500 mt-1">Sila pilih pemasa dan tahap kesukaran untuk memulakan latihan.</p>
+          </div>
+
+          <div className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 text-center space-y-3">
+            <label className="block text-sm font-bold text-gray-700 flex items-center justify-center gap-2">
+              <i className="fa-solid fa-clock text-brand-teal"></i> Pilih Tempoh Masa Latihan:
+            </label>
+            <div className="flex flex-wrap justify-center gap-3">
+              {timeOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setSelectedMinutes(opt.value)}
+                  className={`px-5 py-2.5 rounded-2xl font-bold text-sm transition ${
+                    selectedMinutes === opt.value
+                      ? 'bg-brand-teal text-white shadow-lg scale-105'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {levels.map((lvl) => (
+              <button
+                key={lvl.id}
+                onClick={() => onSelectDifficulty(lvl.id, selectedMinutes * 60)}
+                className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 hover:shadow-2xl transition cursor-pointer text-center group flex flex-col items-center justify-between"
+              >
+                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-tr ${lvl.color} text-white flex items-center justify-center text-3xl shadow-lg mb-4 group-hover:scale-110 transition`}>
+                  <i className={`fa-solid ${lvl.icon}`}></i>
+                </div>
+                <div>
+                  <h3 className="arabic-text text-3xl font-bold text-brand-teal mb-1">{lvl.ar}</h3>
+                  <h4 className="text-xl font-bold text-gray-800 mb-2">({lvl.my})</h4>
+                  <p className="text-xs text-gray-500">{lvl.desc}</p>
+                </div>
+                <div className="mt-6 w-full bg-gray-50 group-hover:bg-brand-teal group-hover:text-white text-brand-teal font-bold py-3 rounded-xl border border-teal-100 transition text-sm flex items-center justify-center gap-2">
+                  <i className="fa-solid fa-play text-xs"></i>
+                  Mula ({selectedMinutes} Minit)
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // --- EXERCISE VIEW ---
+    function ExerciseView({ grade, difficulty, durationSeconds, onBack, onComplete }) {
+      const gradeQuestions = exercisesData[grade] || exercisesData[1];
+      const questions = gradeQuestions[difficulty] || gradeQuestions.easy;
+
+      const [currentIndex, setCurrentIndex] = useState(0);
+      const [selectedAns, setSelectedAns] = useState(null);
+      const [isCorrect, setIsCorrect] = useState(null);
+      const [totalTimeLeft, setTotalTimeLeft] = useState(durationSeconds || 180); 
+      const [isGameOver, setIsGameOver] = useState(false);
+      const [scoreCount, setScoreCount] = useState(0);
+      const [shake, setShake] = useState(false);
+
+      const q = questions[currentIndex] || questions[0];
+
+      const playQuestionVoice = () => {
+        if (!q) return;
+        const textToSpeak = q.arabicVoice || (q.type === 'mcq' && q.question.length > 1 ? q.question : q.title);
+        soundFX.speakQuestion(textToSpeak);
+      };
+
+      useEffect(() => {
+        playQuestionVoice();
+        const timer = setInterval(() => {
+          setTotalTimeLeft((prev) => {
+            if (prev <= 1) {
+              clearInterval(timer);
+              setIsGameOver(true);
+              soundFX.playWrongSFX();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+
+        return () => clearInterval(timer);
+      }, []);
+
+      useEffect(() => {
+        if (!isGameOver) {
+          playQuestionVoice();
+        }
+      }, [currentIndex]);
+
+      const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+      };
+
+      const handleCheck = () => {
+        if (!selectedAns || isGameOver) return;
+        let correct = (selectedAns === q.answer);
+
+        if (correct) {
+          setIsCorrect(true);
+          setScoreCount(prev => prev + 1);
+          soundFX.playCorrectSFX();
+          if (typeof confetti === 'function') confetti({ particleCount: 50, spread: 50 });
+          onComplete(20, 1);
+        } else {
+          setIsCorrect(false);
+          soundFX.playWrongSFX();
+          setShake(true);
+          setTimeout(() => setShake(false), 500);
+        }
+      };
+
+      const handleNext = () => {
+        setIsCorrect(null);
+        setSelectedAns(null);
+        if (currentIndex < questions.length - 1) {
+          setCurrentIndex(prev => prev + 1);
+        } else {
+          setIsGameOver(true);
+        }
+      };
+
+      if (isGameOver) {
+        return (
+          <div className="max-w-md mx-auto bg-white rounded-3xl shadow-2xl p-8 text-center space-y-6 border border-gray-100">
+            <div className="w-20 h-20 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center text-4xl mx-auto shadow-inner">
+              <i className="fa-solid fa-trophy"></i>
+            </div>
+            <div>
+              <h2 className="text-3xl font-bold text-gray-800">Latihan Tamat!</h2>
+              <p className="text-sm text-gray-500 mt-1">Masa latihan telah tamat / Selesai.</p>
+            </div>
+            <div className="bg-teal-50 p-4 rounded-2xl border border-teal-100 space-y-2">
+              <p className="text-gray-600 text-sm font-bold">Skor Anda:</p>
+              <p className="text-4xl font-bold text-brand-teal">{scoreCount} / {questions.length}</p>
+            </div>
+            <button
+              onClick={onBack}
+              className="w-full bg-brand-teal text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-teal-600 transition"
+            >
+              Kembali ke Menu Tahap
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl p-8 border border-gray-100 relative">
+          <div className="flex justify-between items-center border-b pb-4 mb-6">
+            <button onClick={onBack} className="text-gray-400 hover:text-gray-600 font-bold flex items-center gap-2">
+              <i className="fa-solid fa-arrow-left"></i> Keluar
+            </button>
+            <div className="flex items-center gap-4">
+              <div className={`flex items-center gap-2 font-bold px-4 py-1.5 rounded-full text-sm ${totalTimeLeft < 30 ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-amber-100 text-amber-700'}`}>
+                <i className="fa-solid fa-clock"></i>
+                <span>Baki Masa: {formatTime(totalTimeLeft)}</span>
+              </div>
+              <span className="text-xs text-gray-400 font-bold">Soalan {currentIndex + 1}/30</span>
+            </div>
+          </div>
+
+          <div className={`space-y-6 ${shake ? 'shake' : ''}`}>
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">{q.title}</h3>
+                <p className="text-sm text-gray-500 mt-1">{q.instruction}</p>
+              </div>
+
+              <button 
+                onClick={playQuestionVoice}
+                className="bg-teal-50 hover:bg-brand-teal hover:text-white text-brand-teal p-3 rounded-2xl transition flex items-center gap-2 shadow-sm shrink-0"
+                title="Dengar Sebutan Soalan"
+              >
+                <i className="fa-solid fa-volume-high text-xl"></i>
+                <span className="text-xs font-bold hidden sm:inline">Dengar Soalan</span>
+              </button>
+            </div>
+
+            {q.type === 'mcq' && (
+              <div className="text-center py-6">
+                <div className="arabic-text text-5xl font-bold text-brand-teal mb-6 bg-teal-50/50 py-6 rounded-3xl border border-teal-100">
+                  {q.question}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {q.options.map((opt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedAns(opt)}
+                      className={`p-4 rounded-2xl font-bold text-lg border-2 transition ${
+                        selectedAns === opt 
+                          ? 'border-brand-teal bg-teal-50 text-brand-teal shadow-md' 
+                          : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {q.type === 'fill_missing' && (
+              <div className="text-center py-6 space-y-6">
+                <div className="arabic-text text-5xl font-bold text-gray-800 bg-gray-50 p-6 rounded-2xl inline-block border">
+                  {q.display.replace('_', selectedAns || '_')}
+                </div>
+
+                <div className="flex justify-center gap-4">
+                  {q.given.map((char, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedAns(char)}
+                      className="arabic-text text-2xl font-bold w-14 h-14 rounded-2xl border-2 border-brand-teal text-brand-teal hover:bg-teal-50 transition"
+                    >
+                      {char}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {isCorrect === true && (
+              <div className="bg-emerald-50 text-emerald-700 p-4 rounded-2xl font-bold text-center">
+                Jawapan Betul! 🎉 +20 XP
+              </div>
+            )}
+            {isCorrect === false && (
+              <div className="bg-rose-50 text-rose-700 p-4 rounded-2xl font-bold text-center">
+                Jawapan Salah! Cuba Lagi 💪
+              </div>
+            )}
+
+            <div className="pt-4">
+              {isCorrect === null ? (
+                <button
+                  onClick={handleCheck}
+                  className="w-full bg-brand-teal text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-teal-600 transition"
+                >
+                  Semak Jawapan
+                </button>
+              ) : (
+                <button
+                  onClick={handleNext}
+                  className="w-full bg-brand-yellow text-gray-900 font-bold py-4 rounded-2xl shadow-lg hover:bg-yellow-400 transition"
+                >
+                  Seterusnya ({currentIndex + 1}/30)
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- DICTIONARY VIEW ---
+    function DictionaryView({ onBack }) {
+      const [searchTerm, setSearchTerm] = useState('');
+      const [selectedCategory, setSelectedCategory] = useState('all');
+
+      const categories = [
+        { id: 'all', label: 'Semua Kategori', icon: 'fa-layer-group' },
+        { id: 'pengenalan', label: 'Kata-kata Pengenalan', icon: 'fa-comments' },
+        { id: 'nombor', label: 'Nombor (1 - 100)', icon: 'fa-arrow-1-9' },
+        { id: 'bulan', label: 'Bulan (Hijri & Miladi)', icon: 'fa-calendar-days' },
+        { id: 'alatan_kelas', label: 'Alatan Kelas', icon: 'fa-chalkboard-user' },
+        { id: 'warna', label: 'Warna', icon: 'fa-palette' },
+        { id: 'alatan_rumah', label: 'Alatan Rumah', icon: 'fa-house-user' },
+        { id: 'tempat_sekolah', label: 'Tempat di Sekolah', icon: 'fa-school' },
+        { id: 'sukan', label: 'Jenis Sukan', icon: 'fa-football' },
+        { id: 'cita_cita', label: 'Cita-cita Saya', icon: 'fa-user-tie' },
+        { id: 'alatan_tandas', label: 'Peralatan Tandas', icon: 'fa-soap' },
+        { id: 'kenderaan', label: 'Kenderaan', icon: 'fa-car' },
+        { id: 'keluarga', label: 'Ahli Keluarga', icon: 'fa-people-roof' },
+        { id: 'badan', label: 'Anggota Badan', icon: 'fa-child' },
+        { id: 'alatan_belajar', label: 'Alatan Belajar', icon: 'fa-pen-ruler' },
+        { id: 'pakaian', label: 'Pakaian', icon: 'fa-shirt' },
+        { id: 'makanan', label: 'Makanan & Minuman', icon: 'fa-utensils' },
+        { id: 'hari', label: 'Hari', icon: 'fa-calendar-day' },
+        { id: 'alatan_dapur', label: 'Alatan di Dapur', icon: 'fa-kitchen-set' },
+        { id: 'haiwan', label: 'Haiwan', icon: 'fa-paw' }
+      ];
+
+      const filteredWords = globalDictionary.filter(item => {
+        const matchesSearch = item.ar.includes(searchTerm) || item.my.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+      });
+
+      return (
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="flex justify-between items-center">
+            <button onClick={onBack} className="text-gray-400 hover:text-gray-600 font-bold flex items-center gap-2">
+              <i className="fa-solid fa-arrow-left"></i> Kembali
+            </button>
+            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <i className="fa-solid fa-book-bookmark text-brand-teal"></i> Kamus KSSR Bahasa Arab
+            </h2>
+          </div>
+
+          <div className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 space-y-4">
+            <div className="relative">
+              <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <input 
+                type="text"
+                placeholder="Cari perkataan Arab atau Melayu..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 rounded-2xl bg-gray-50 border border-gray-200 focus:outline-none focus:border-brand-teal font-semibold text-gray-700"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`px-4 py-2 rounded-xl font-bold text-xs whitespace-nowrap transition flex items-center gap-2 border shrink-0 ${
+                    selectedCategory === cat.id
+                      ? 'bg-brand-teal text-white border-brand-teal shadow-md'
+                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  <i className={`fa-solid ${cat.icon}`}></i>
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredWords.map((word, idx) => {
+              const catObj = categories.find(c => c.id === word.category);
+              return (
+                <div key={idx} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex justify-between items-center hover:shadow-md transition">
+                  <div className="space-y-1">
+                    <span className="bg-teal-50 text-brand-teal text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-teal-100 flex items-center gap-1 w-max">
+                      <i className={`fa-solid ${catObj ? catObj.icon : 'fa-tag'}`}></i>
+                      {catObj ? catObj.label : 'KSSR'}
+                    </span>
+                    <p className="text-lg font-bold text-gray-800">{word.my}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="arabic-text text-3xl font-bold text-brand-teal">{word.ar}</span>
+                    <button 
+                      onClick={() => soundFX.speakQuestion(word.ar)}
+                      className="w-10 h-10 bg-gray-100 hover:bg-brand-teal hover:text-white rounded-xl flex items-center justify-center text-gray-600 transition shrink-0"
+                      title="Sebut Perkataan"
+                    >
+                      <i className="fa-solid fa-volume-high"></i>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredWords.length === 0 && (
+              <div className="col-span-full text-center py-12 bg-white rounded-3xl text-gray-400">
+                <i className="fa-solid fa-circle-exclamation text-4xl mb-2"></i>
+                <p className="font-bold">Tiada perkataan ditemui.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // --- LEADERBOARD VIEW ---
+    function LeaderboardView({ leaderboard, onBack }) {
+      return (
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="flex justify-between items-center">
+            <button onClick={onBack} className="text-gray-400 hover:text-gray-600 font-bold flex items-center gap-2">
+              <i className="fa-solid fa-arrow-left"></i> Kembali
+            </button>
+            <h2 className="text-2xl font-bold text-gray-800">Kedudukan & Pencapaian</h2>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-md border border-gray-100 overflow-hidden">
+            <div className="bg-brand-teal text-white p-4 font-bold flex justify-between items-center">
+              <span>Kedudukan Murid</span>
+              <span>XP / Bintang</span>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {leaderboard.map((item, index) => {
+                const av = CARTOON_AVATARS.find(a => a.id === item.avatar) || CARTOON_AVATARS[0];
+                return (
+                  <div key={index} className="p-4 flex items-center justify-between hover:bg-gray-50 transition">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
+                        index === 0 ? 'bg-amber-400 text-white' : index === 1 ? 'bg-gray-300 text-white' : index === 2 ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {index + 1}
+                      </span>
+                      <div className={`w-10 h-10 ${av.bg} text-white rounded-xl flex items-center justify-center shadow`}>
+                        <i className={`fa-solid ${av.icon}`}></i>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-gray-800">{item.name}</h4>
+                        <p className="text-[10px] text-gray-400">Kartun: {av.name}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <span className="font-extrabold text-brand-teal">{item.xp} XP</span>
+                        <div className="text-xs font-bold text-amber-500">★ {item.stars}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
